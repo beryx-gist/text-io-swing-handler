@@ -51,8 +51,8 @@ dependencies {
 jar {
     manifest {
         attributes 'Implementation-Title': "text-io-swing-handler",
-                'Main-Class': 'org.beryx.swing.handler.SwingHandler',
+                'Main-Class': 'org.beryx.swing.handler.Demo',
                 'Implementation-Version': textIoSwingHandlerVersion
     }
 }
-mainClassName = 'org.beryx.swing.handler.SwingHandler'
+mainClassName = 'org.beryx.swing.handler.Demo'

@@ -18,10 +18,15 @@ package org.beryx.swing.handler;
 import org.beryx.textio.*;
 import org.beryx.textio.swing.SwingTextTerminal;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.DoubleStream;
+import java.util.stream.IntStream;
 
 import static org.beryx.textio.ReadInterruptionStrategy.Action.ABORT;
 
@@ -31,42 +36,20 @@ public class SwingHandler {
 
     private final TextIO textIO;
     private final SwingTextTerminal terminal;
+    private final Object dataObject;
 
     private final String backKeyStroke;
 
     private String originalInput = "";
     private int choiceIndex = -1;
-    private String[] choices = {};
+    private List<String> choices = new ArrayList<>();
 
-    private static class Contact {
-        String firstName;
-        String lastName;
-        String streetAddress;
-        String city;
-        String zipCode;
-        String state;
-        String country;
-        String phone;
+    private final List<Task> operations = new ArrayList<>();
 
-        @Override
-        public String toString() {
-            return "\n\tfirstName: " + firstName +
-                    "\n\tlastName: " + lastName +
-                    "\n\tstreetAddress: " + streetAddress +
-                    "\n\tcity: " + city +
-                    "\n\tzipCode: " + zipCode +
-                    "\n\tstate: " + state +
-                    "\n\tcountry: " + country +
-                    "\n\tphone: " + phone;
-        }
-    }
-
-    private final List<Runnable> operations = new ArrayList<>();
-
-    public SwingHandler() {
-        this.terminal = new SwingTextTerminal();
-        terminal.init();
-        this.textIO = new TextIO(terminal);
+    public SwingHandler(TextIO textIO, Object dataObject) {
+        this.textIO = textIO;
+        this.terminal = (SwingTextTerminal)textIO.getTextTerminal();
+        this.dataObject = dataObject;
 
         this.backKeyStroke = terminal.getProperties().getString("custom.back.key", "ctrl U");
 
@@ -74,9 +57,9 @@ public class SwingHandler {
             if(choiceIndex < 0) {
                 originalInput = terminal.getPartialInput();
             }
-            if(choiceIndex < choices.length - 1) {
+            if(choiceIndex < choices.size() - 1) {
                 choiceIndex++;
-                t.replaceInput(choices[choiceIndex], false);
+                t.replaceInput(choices.get(choiceIndex), false);
             }
             return new ReadHandlerData(ReadInterruptionStrategy.Action.CONTINUE);
         });
@@ -84,7 +67,7 @@ public class SwingHandler {
         terminal.registerHandler(KEY_STROKE_DOWN, t -> {
             if(choiceIndex >= 0) {
                 choiceIndex--;
-                String text = (choiceIndex < 0) ? originalInput : choices[choiceIndex];
+                String text = (choiceIndex < 0) ? originalInput : choices.get(choiceIndex);
                 t.replaceInput(text, false);
             }
             return new ReadHandlerData(ReadInterruptionStrategy.Action.CONTINUE);
@@ -101,15 +84,103 @@ public class SwingHandler {
         return backKeyStroke;
     }
 
-    private void addTask(String prompt, Supplier<String> defaultValueSupplier,
-                         Consumer<String> valueSetter, String... choices) {
-        operations.add(() -> {
-            setChoices(choices);
-            valueSetter.accept(textIO.newStringInputReader()
-                .withDefaultValue(defaultValueSupplier.get())
-                .read(prompt));
-        });
+    public class Task<T,B extends Task<T,B>> implements Runnable {
+        protected final String prompt;
+        protected final Supplier<InputReader<T,?>> inputReaderSupplier;
+        protected final Supplier<T> defaultValueSupplier;
+        protected final Consumer<T> valueSetter;
+        protected final List<T> choices = new ArrayList<>();
+
+        public Task(String prompt, Supplier<InputReader<T, ?>> inputReaderSupplier, Supplier<T> defaultValueSupplier, Consumer<T> valueSetter) {
+            this.prompt = prompt;
+            this.inputReaderSupplier = inputReaderSupplier;
+            this.defaultValueSupplier = defaultValueSupplier;
+            this.valueSetter = valueSetter;
+        }
+
+        @Override
+        public void run() {
+            setChoices(choices.stream().map(Object::toString).collect(Collectors.toList()));
+            valueSetter.accept(inputReaderSupplier.get()
+                    .withDefaultValue(defaultValueSupplier.get())
+                    .read(prompt));
+        }
+
+        public B addChoices(List<T> choices) {
+            this.choices.addAll(choices);
+            return (B)this;
+        }
     }
+
+    private void setChoices(List<String> choices) {
+        this.originalInput = "";
+        this.choiceIndex = -1;
+        this.choices = choices;
+    }
+
+    public class StringTask extends Task<String, StringTask> {
+        public StringTask(String fieldName, String prompt) {
+            super(prompt,
+                    () -> textIO.newStringInputReader(),
+                    () -> getFieldValue(fieldName),
+                    value -> setFieldValue(fieldName, value));
+        }
+
+        public StringTask addChoices(String... choices) {
+            this.choices.addAll(Arrays.asList(choices));
+            return this;
+        }
+    }
+
+    public StringTask addStringTask(String fieldName, String prompt) {
+        StringTask task = new StringTask(fieldName, prompt);
+        operations.add(task);
+        return task;
+    }
+
+
+    public class IntTask extends Task<Integer, IntTask> {
+        public IntTask(String fieldName, String prompt) {
+            super(prompt,
+                    () -> textIO.newIntInputReader(),
+                    () -> getFieldValue(fieldName),
+                    value -> setFieldValue(fieldName, value));
+        }
+        public IntTask addChoices(int... choices) {
+            this.choices.addAll(IntStream.of(choices).boxed().collect(Collectors.toList()));
+            return this;
+        }
+    }
+
+    public IntTask addIntTask(String fieldName, String prompt) {
+        IntTask task = new IntTask(fieldName, prompt);
+        operations.add(task);
+        return task;
+    }
+
+
+    public class DoubleTask extends Task<Double, DoubleTask> {
+        public DoubleTask(String fieldName, String prompt) {
+            super(prompt,
+                    () -> textIO.newDoubleInputReader(),
+                    () -> getFieldValue(fieldName),
+                    value -> setFieldValue(fieldName, value));
+        }
+        public DoubleTask addChoices(double... choices) {
+            this.choices.addAll(DoubleStream.of(choices).boxed().collect(Collectors.toList()));
+            return this;
+        }
+    }
+
+    public DoubleTask addDoubleTask(String fieldName, String prompt) {
+        DoubleTask task = new DoubleTask(fieldName, prompt);
+        operations.add(task);
+        return task;
+    }
+
+
+// TODO - implement Task specializations for: boolean, byte, char, enum, float, long, short etc.
+
 
     public void execute() {
         int step = 0;
@@ -126,49 +197,27 @@ public class SwingHandler {
         }
     }
 
-
-    @Override
-    public String toString() {
-        return getClass().getSimpleName() + ": reading contact info.\n" +
-                "(Illustrates how to use read handlers to allow going back to a previous field.)";
+    private Field getField(String fieldName) {
+        try {
+            return dataObject.getClass().getField(fieldName);
+        } catch (NoSuchFieldException e) {
+            throw new IllegalArgumentException("Unknown field: " + fieldName);
+        }
     }
 
-    public void setChoices(String... choices) {
-        this.originalInput = "";
-        this.choiceIndex = -1;
-        this.choices = choices;
+    private <V> V getFieldValue(String fieldName) {
+        try {
+            return (V) getField(fieldName).get(dataObject);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Cannot retrieve value of " + fieldName, e);
+        }
     }
 
-    public static void main(String[] args) {
-        SwingHandler handler = new SwingHandler();
-        TextIO textIO = handler.getTextIO();
-        TextTerminal<?> terminal = textIO.getTextTerminal();
-
-        terminal.println("----------------------------------------------------------------");
-        terminal.println("|   Use the up and down arrow keys to scroll through choices.  |");
-        terminal.println("|   Press '" + handler.getBackKeyStroke() + "' to go back to the previous field.           |");
-        terminal.println("----------------------------------------------------------------\n");
-
-        Contact contact = new Contact();
-        handler.addTask("First name", () -> contact.firstName, s -> contact.firstName = s,
-                "albert", "alice", "ava", "betty", "cathy");
-        handler.addTask("Last name", () -> contact.lastName, s -> contact.lastName = s,
-                "Adams", "Bush", "Clinton", "Eisenhower", "Ford");
-        handler.addTask("Street address", () -> contact.streetAddress, s -> contact.streetAddress = s);
-        handler.addTask("City", () -> contact.city, s -> contact.city = s,
-                "Los Angeles", "New York", "San Francisco", "Washington");
-        handler.addTask("Zip code", () -> contact.zipCode, s -> contact.zipCode = s);
-        handler.addTask("State", () -> contact.state, s -> contact.state = s,
-                "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware");
-        handler.addTask("Country", () -> contact.country, s -> contact.country = s,
-                "China", "France", "Germany", "Japan", "South Korea", "USA");
-        handler.addTask("Phone number", () -> contact.phone, s -> contact.phone = s);
-
-        handler.execute();
-
-        terminal.println("\nContact info: " + contact);
-
-        textIO.newStringInputReader().withMinLength(0).read("\nPress enter to terminate...");
-        textIO.dispose();
+    private <V> void setFieldValue(String fieldName, V value) {
+        try {
+            getField(fieldName).set(dataObject, value);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Cannot set value of " + fieldName, e);
+        }
     }
 }

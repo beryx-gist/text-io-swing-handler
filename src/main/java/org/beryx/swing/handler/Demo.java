@@ -49,7 +49,7 @@ public class Demo {
         terminal.println("----------------------------------------------------------------\n");
 
         handler.addStringTask("name", "Product name")
-                .addChoices("albert", "alice", "ava", "betty", "cathy");
+                .addChoices("air conditioner", "air ioniser", "air purifier", "appliance plug", "aroma lamp", "attic fan", "bachelor griller", "back boiler", "beverage opener", "blender", "box mangle", "can opener", "ceiling fan", "central vacuum cleaner", "clothes dryer", "clothes iron", "cold-pressed juicer", "combo washer dryer", "dish draining closet", "dishwasher", "comparison of domestic robots", "drawer dishwasher", "electric water boiler", "exhaust hood", "fan heater", "flame supervision device", "forced-air", "futon dryer", "garbage disposal unit", "gas appliance", "go-to-bed matchbox", "hair dryer", "hair iron", "hob (hearth)", "home server", "humidifier", "hvac", "icebox", "kimchi refrigerator", "light fixture", "light", "mangle (machine)", "micathermic heater", "microwave oven", "mobile charger", "mousetrap", "oil heater", "oven", "patio heater", "paper shredder", "radiator (heating)", "refrigerator", "sewing machine", "space heater", "steam mop", "stove", "sump pump", "television", "tie press", "toaster and toaster ovens", "trouser press", "vacuum cleaner", "washing machine", "water cooker", "water purifier", "water heater", "window fan", "waffle iron");
         handler.addIntTask("quantity", "Quantity")
                 .addChoices(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
         handler.addDoubleTask("unitPrice", "Unit price")

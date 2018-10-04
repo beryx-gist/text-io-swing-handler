@@ -27,6 +27,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 import static org.beryx.textio.ReadInterruptionStrategy.Action.ABORT;
 
@@ -43,8 +44,9 @@ public class SwingHandler {
     private String originalInput = "";
     private int choiceIndex = -1;
     private List<String> choices = new ArrayList<>();
+    private List<String> filteredChoices = new ArrayList<>();
 
-    private final List<Task> operations = new ArrayList<>();
+    private final List<Task> tasks = new ArrayList<>();
 
     public SwingHandler(TextIO textIO, Object dataObject) {
         this.textIO = textIO;
@@ -56,10 +58,11 @@ public class SwingHandler {
         terminal.registerHandler(KEY_STROKE_UP, t -> {
             if(choiceIndex < 0) {
                 originalInput = terminal.getPartialInput();
+                filteredChoices = choices.stream().filter(choice -> choice.startsWith(originalInput)).collect(Collectors.toList());
             }
-            if(choiceIndex < choices.size() - 1) {
+            if(choiceIndex < filteredChoices.size() - 1) {
                 choiceIndex++;
-                t.replaceInput(choices.get(choiceIndex), false);
+                t.replaceInput(filteredChoices.get(choiceIndex), false);
             }
             return new ReadHandlerData(ReadInterruptionStrategy.Action.CONTINUE);
         });
@@ -67,7 +70,7 @@ public class SwingHandler {
         terminal.registerHandler(KEY_STROKE_DOWN, t -> {
             if(choiceIndex >= 0) {
                 choiceIndex--;
-                String text = (choiceIndex < 0) ? originalInput : choices.get(choiceIndex);
+                String text = (choiceIndex < 0) ? originalInput : filteredChoices.get(choiceIndex);
                 t.replaceInput(text, false);
             }
             return new ReadHandlerData(ReadInterruptionStrategy.Action.CONTINUE);
@@ -134,7 +137,7 @@ public class SwingHandler {
 
     public StringTask addStringTask(String fieldName, String prompt) {
         StringTask task = new StringTask(fieldName, prompt);
-        operations.add(task);
+        tasks.add(task);
         return task;
     }
 
@@ -154,7 +157,27 @@ public class SwingHandler {
 
     public IntTask addIntTask(String fieldName, String prompt) {
         IntTask task = new IntTask(fieldName, prompt);
-        operations.add(task);
+        tasks.add(task);
+        return task;
+    }
+
+
+    public class LongTask extends Task<Long, LongTask> {
+        public LongTask(String fieldName, String prompt) {
+            super(prompt,
+                    () -> textIO.newLongInputReader(),
+                    () -> getFieldValue(fieldName),
+                    value -> setFieldValue(fieldName, value));
+        }
+        public LongTask addChoices(long... choices) {
+            this.choices.addAll(LongStream.of(choices).boxed().collect(Collectors.toList()));
+            return this;
+        }
+    }
+
+    public LongTask addLongTask(String fieldName, String prompt) {
+        LongTask task = new LongTask(fieldName, prompt);
+        tasks.add(task);
         return task;
     }
 
@@ -174,20 +197,20 @@ public class SwingHandler {
 
     public DoubleTask addDoubleTask(String fieldName, String prompt) {
         DoubleTask task = new DoubleTask(fieldName, prompt);
-        operations.add(task);
+        tasks.add(task);
         return task;
     }
 
 
-// TODO - implement Task specializations for: boolean, byte, char, enum, float, long, short etc.
+// TODO - implement Task specializations for: boolean, byte, char, enum, float, short etc.
 
 
     public void execute() {
         int step = 0;
-        while(step < operations.size()) {
+        while(step < tasks.size()) {
             terminal.setBookmark("bookmark_" + step);
             try {
-                operations.get(step).run();
+                tasks.get(step).run();
             } catch (ReadAbortedException e) {
                 if(step > 0) step--;
                 terminal.resetToBookmark("bookmark_" + step);

@@ -15,14 +15,18 @@
  */
 package org.beryx.swing.handler;
 
-import org.apache.commons.lang3.StringUtils;
+import org.beryx.textio.ReadAbortedException;
 import org.beryx.textio.ReadHandlerData;
 import org.beryx.textio.ReadInterruptionStrategy;
 import org.beryx.textio.TextIO;
 import org.beryx.textio.swing.SwingTextTerminal;
 
-import java.time.Month;
-import java.util.stream.Stream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+import static org.beryx.textio.ReadInterruptionStrategy.Action.ABORT;
 
 public class SwingHandler {
     private static final String KEY_STROKE_UP = "pressed UP";
@@ -30,13 +34,42 @@ public class SwingHandler {
 
     private final SwingTextTerminal terminal;
 
+    private final String backKeyStroke;
+
     private String originalInput = "";
     private int choiceIndex = -1;
     private String[] choices = {};
 
+    private static class Contact {
+        String firstName;
+        String lastName;
+        String streetAddress;
+        String city;
+        String zipCode;
+        String state;
+        String country;
+        String phone;
+
+        @Override
+        public String toString() {
+            return "\n\tfirstName: " + firstName +
+                    "\n\tlastName: " + lastName +
+                    "\n\tstreetAddress: " + streetAddress +
+                    "\n\tcity: " + city +
+                    "\n\tzipCode: " + zipCode +
+                    "\n\tstate: " + state +
+                    "\n\tcountry: " + country +
+                    "\n\tphone: " + phone;
+        }
+    }
+
+    private final List<Runnable> operations = new ArrayList<>();
 
     public SwingHandler(SwingTextTerminal terminal) {
         this.terminal = terminal;
+
+        this.backKeyStroke = terminal.getProperties().getString("custom.back.key", "ctrl U");
+
         terminal.registerHandler(KEY_STROKE_UP, t -> {
             if(choiceIndex < 0) {
                 originalInput = terminal.getPartialInput();
@@ -56,6 +89,44 @@ public class SwingHandler {
             }
             return new ReadHandlerData(ReadInterruptionStrategy.Action.CONTINUE);
         });
+
+        terminal.registerHandler(backKeyStroke, t -> new ReadHandlerData(ABORT));
+    }
+
+    public String getBackKeyStroke() {
+        return backKeyStroke;
+    }
+
+    private void addTask(TextIO textIO, String prompt,
+                         Supplier<String> defaultValueSupplier, Consumer<String> valueSetter, String... choices) {
+        operations.add(() -> {
+            setChoices(choices);
+            valueSetter.accept(textIO.newStringInputReader()
+                .withDefaultValue(defaultValueSupplier.get())
+                .read(prompt));
+        });
+    }
+
+    public void execute() {
+        int step = 0;
+        while(step < operations.size()) {
+            terminal.setBookmark("bookmark_" + step);
+            try {
+                operations.get(step).run();
+            } catch (ReadAbortedException e) {
+                if(step > 0) step--;
+                terminal.resetToBookmark("bookmark_" + step);
+                continue;
+            }
+            step++;
+        }
+    }
+
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + ": reading contact info.\n" +
+                "(Illustrates how to use read handlers to allow going back to a previous field.)";
     }
 
     public void setChoices(String... choices) {
@@ -70,30 +141,29 @@ public class SwingHandler {
         TextIO textIO = new TextIO(terminal);
         SwingHandler handler = new SwingHandler(terminal);
 
-        terminal.println("-------------------------------------------------------------------------");
-        terminal.println("|   You can use the up and down arrow keys to scroll through choices.   |");
-        terminal.println("-------------------------------------------------------------------------\n");
+        terminal.println("----------------------------------------------------------------");
+        terminal.println("|   Use the up and down arrow keys to scroll through choices.  |");
+        terminal.println("|   Press '" + handler.getBackKeyStroke() + "' to go back to the previous field.           |");
+        terminal.println("----------------------------------------------------------------\n");
 
-        handler.setChoices("albert", "alice", "ava", "betty", "cathy");
-        String player = textIO.newStringInputReader().read("Player name");
+        Contact contact = new Contact();
+        handler.addTask(textIO, "First name", () -> contact.firstName, s -> contact.firstName = s,
+                "albert", "alice", "ava", "betty", "cathy");
+        handler.addTask(textIO, "Last name", () -> contact.lastName, s -> contact.lastName = s,
+                "Adams", "Bush", "Clinton", "Eisenhower", "Ford");
+        handler.addTask(textIO, "Street address", () -> contact.streetAddress, s -> contact.streetAddress = s);
+        handler.addTask(textIO, "City", () -> contact.city, s -> contact.city = s,
+                "Los Angeles", "New York", "San Francisco", "Washington");
+        handler.addTask(textIO, "Zip code", () -> contact.zipCode, s -> contact.zipCode = s);
+        handler.addTask(textIO, "State", () -> contact.state, s -> contact.state = s,
+                "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware");
+        handler.addTask(textIO, "Country", () -> contact.country, s -> contact.country = s,
+                "China", "France", "Germany", "Japan", "South Korea", "USA");
+        handler.addTask(textIO, "Phone number", () -> contact.phone, s -> contact.phone = s);
 
-        // No choices here
-        handler.setChoices();
-        int points = textIO.newIntInputReader().read("Total points");
+        handler.execute();
 
-        String[] monthNames = Stream.of(Month.values())
-                .map(Month::name)
-                .map(String::toLowerCase)
-                .map(StringUtils::capitalize)
-                .toArray(String[]::new);
-        handler.setChoices(monthNames);
-        String month = textIO.newStringInputReader()
-                .withInlinePossibleValues(monthNames)
-                .withIgnoreCase()
-                .withPromptAdjustments(false)
-                .read("Month: ");
-
-        terminal.printf("\nHello, %s! You earned %d points in %s.\n\n", player, points, month);
+        terminal.println("\nContact info: " + contact);
 
         textIO.newStringInputReader().withMinLength(0).read("\nPress enter to terminate...");
         textIO.dispose();

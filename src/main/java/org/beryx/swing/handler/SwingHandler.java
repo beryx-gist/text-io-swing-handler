@@ -46,12 +46,22 @@ public class SwingHandler {
     private List<String> choices = new ArrayList<>();
     private List<String> filteredChoices = new ArrayList<>();
 
-    private final List<Task> tasks = new ArrayList<>();
+    private final Supplier<InputReader<String,?>> stringInputReaderSupplier;
+    private final Supplier<InputReader<Integer,?>> intInputReaderSupplier;
+    private final Supplier<InputReader<Long,?>> longInputReaderSupplier;
+    private final Supplier<InputReader<Double,?>> doubleInputReaderSupplier;
+    
+    private final List<Task<?,?>> tasks = new ArrayList<>();
 
     public SwingHandler(TextIO textIO, Object dataObject) {
         this.textIO = textIO;
         this.terminal = (SwingTextTerminal)textIO.getTextTerminal();
         this.dataObject = dataObject;
+        
+        this.stringInputReaderSupplier = () -> textIO.newStringInputReader();
+        this.intInputReaderSupplier = () -> textIO.newIntInputReader();
+        this.longInputReaderSupplier = () -> textIO.newLongInputReader();
+        this.doubleInputReaderSupplier = () -> textIO.newDoubleInputReader();
 
         this.backKeyStroke = terminal.getProperties().getString("custom.back.key", "ctrl U");
 
@@ -109,7 +119,8 @@ public class SwingHandler {
                     .read(prompt));
         }
 
-        public B addChoices(List<T> choices) {
+        @SuppressWarnings("unchecked")
+		public B addChoices(List<T> choices) {
             this.choices.addAll(choices);
             return (B)this;
         }
@@ -121,12 +132,20 @@ public class SwingHandler {
         this.choices = choices;
     }
 
+    private final <T> Supplier<T> getDefaultValueSupplier(String fieldName) {
+    	return () -> getFieldValue(fieldName);
+    }
+    
+    private final <T> Consumer<T> getValueSetter(String fieldName) {
+    	return value -> setFieldValue(fieldName, value);
+    }
+    
     public class StringTask extends Task<String, StringTask> {
         public StringTask(String fieldName, String prompt) {
             super(prompt,
-                    () -> textIO.newStringInputReader(),
-                    () -> getFieldValue(fieldName),
-                    value -> setFieldValue(fieldName, value));
+                    stringInputReaderSupplier,
+                    getDefaultValueSupplier(fieldName),
+                    getValueSetter(fieldName));
         }
 
         public StringTask addChoices(String... choices) {
@@ -145,9 +164,9 @@ public class SwingHandler {
     public class IntTask extends Task<Integer, IntTask> {
         public IntTask(String fieldName, String prompt) {
             super(prompt,
-                    () -> textIO.newIntInputReader(),
-                    () -> getFieldValue(fieldName),
-                    value -> setFieldValue(fieldName, value));
+                    intInputReaderSupplier,
+                    getDefaultValueSupplier(fieldName),
+                    getValueSetter(fieldName));
         }
         public IntTask addChoices(int... choices) {
             this.choices.addAll(IntStream.of(choices).boxed().collect(Collectors.toList()));
@@ -165,9 +184,9 @@ public class SwingHandler {
     public class LongTask extends Task<Long, LongTask> {
         public LongTask(String fieldName, String prompt) {
             super(prompt,
-                    () -> textIO.newLongInputReader(),
-                    () -> getFieldValue(fieldName),
-                    value -> setFieldValue(fieldName, value));
+                    longInputReaderSupplier,
+                    getDefaultValueSupplier(fieldName),
+                    getValueSetter(fieldName));
         }
         public LongTask addChoices(long... choices) {
             this.choices.addAll(LongStream.of(choices).boxed().collect(Collectors.toList()));
@@ -185,9 +204,9 @@ public class SwingHandler {
     public class DoubleTask extends Task<Double, DoubleTask> {
         public DoubleTask(String fieldName, String prompt) {
             super(prompt,
-                    () -> textIO.newDoubleInputReader(),
-                    () -> getFieldValue(fieldName),
-                    value -> setFieldValue(fieldName, value));
+                    doubleInputReaderSupplier,
+                    getDefaultValueSupplier(fieldName),
+                    getValueSetter(fieldName));
         }
         public DoubleTask addChoices(double... choices) {
             this.choices.addAll(DoubleStream.of(choices).boxed().collect(Collectors.toList()));
@@ -228,7 +247,8 @@ public class SwingHandler {
         }
     }
 
-    private <V> V getFieldValue(String fieldName) {
+    @SuppressWarnings("unchecked")
+	private <V> V getFieldValue(String fieldName) {
         try {
             return (V) getField(fieldName).get(dataObject);
         } catch (Exception e) {

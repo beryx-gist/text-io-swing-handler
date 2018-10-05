@@ -1,12 +1,12 @@
 /*
  * Copyright 2018 the original author or authors.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -53,14 +53,14 @@ public class SwingHandler {
     private final Supplier<IntInputReader> intInputReaderSupplier;
     private final Supplier<LongInputReader> longInputReaderSupplier;
     private final Supplier<DoubleInputReader> doubleInputReaderSupplier;
-    
+
     private final List<Task<?,?,?>> tasks = new ArrayList<>();
 
     public SwingHandler(TextIO textIO, Object dataObject) {
         this.textIO = textIO;
         this.terminal = (SwingTextTerminal)textIO.getTextTerminal();
         this.dataObject = dataObject;
-        
+
         this.stringInputReaderSupplier = () -> textIO.newStringInputReader();
         this.intInputReaderSupplier = () -> textIO.newIntInputReader();
         this.longInputReaderSupplier = () -> textIO.newLongInputReader();
@@ -68,18 +68,18 @@ public class SwingHandler {
 
         this.backKeyStroke = terminal.getProperties().getString("custom.back.key", "ctrl U");
 
-        terminal.getDocument().addDocumentListener(new DocumentListener() {			
-			@Override public void removeUpdate(DocumentEvent e) {choiceIndex = -1;}
-			@Override public void insertUpdate(DocumentEvent e) {choiceIndex = -1;}
-			@Override public void changedUpdate(DocumentEvent e) {choiceIndex = -1;}
-		});
-        
+        terminal.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void removeUpdate(DocumentEvent e) {choiceIndex = -1;}
+            @Override public void insertUpdate(DocumentEvent e) {choiceIndex = -1;}
+            @Override public void changedUpdate(DocumentEvent e) {choiceIndex = -1;}
+        });
+
         terminal.registerHandler(KEY_STROKE_UP, t -> {
             if(choiceIndex < 0) {
                 originalInput = terminal.getPartialInput();
                 filteredChoices = choices.stream()
-                		.filter(choice -> choice.toLowerCase().startsWith(originalInput.toLowerCase()))
-                		.collect(Collectors.toList());
+                        .filter(choice -> choice.toLowerCase().startsWith(originalInput.toLowerCase()))
+                        .collect(Collectors.toList());
             }
             if(choiceIndex < filteredChoices.size() - 1) {
                 int savedChoiceIndex = ++choiceIndex;
@@ -132,30 +132,30 @@ public class SwingHandler {
             R inputReader = inputReaderSupplier.get();
             inputReader.withDefaultValue(defaultValueSupplier.get());
             if(inputReaderConfigurator != null) {
-            	inputReaderConfigurator.accept(inputReader);
+                inputReaderConfigurator.accept(inputReader);
             }
             if(constrainedInput) {
-            	inputReader.withValueChecker((val,name) -> choices.contains(val) ? null 
-            			: Arrays.asList("'" + val + "' is not in the choice list."));
+                inputReader.withValueChecker((val,name) -> choices.contains(val) ? null
+                        : Arrays.asList("'" + val + "' is not in the choice list."));
 
             }
             valueSetter.accept(inputReader.read(prompt));
         }
 
         @SuppressWarnings("unchecked")
-		public B withInputReaderConfigurator(Consumer<R> configurator) {
+        public B withInputReaderConfigurator(Consumer<R> configurator) {
             this.inputReaderConfigurator = configurator;
             return (B)this;
         }
-        
+
         @SuppressWarnings("unchecked")
-		public B addChoices(List<T> choices) {
+        public B addChoices(List<T> choices) {
             this.choices.addAll(choices);
             return (B)this;
         }
-        
+
         public void constrainInputToChoices() {
-        	this.constrainedInput = true;
+            this.constrainedInput = true;
         }
     }
 
@@ -166,13 +166,13 @@ public class SwingHandler {
     }
 
     private final <T> Supplier<T> getDefaultValueSupplier(String fieldName) {
-    	return () -> getFieldValue(fieldName);
+        return () -> getFieldValue(fieldName);
     }
-    
+
     private final <T> Consumer<T> getValueSetter(String fieldName) {
-    	return value -> setFieldValue(fieldName, value);
+        return value -> setFieldValue(fieldName, value);
     }
-    
+
     public class StringTask extends Task<String, StringTask, StringInputReader> {
         public StringTask(String fieldName, String prompt) {
             super(prompt,
@@ -281,7 +281,7 @@ public class SwingHandler {
     }
 
     @SuppressWarnings("unchecked")
-	private <V> V getFieldValue(String fieldName) {
+    private <V> V getFieldValue(String fieldName) {
         try {
             return (V) getField(fieldName).get(dataObject);
         } catch (Exception e) {

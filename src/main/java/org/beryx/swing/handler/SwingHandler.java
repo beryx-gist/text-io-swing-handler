@@ -29,6 +29,9 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+
 import static org.beryx.textio.ReadInterruptionStrategy.Action.ABORT;
 
 public class SwingHandler {
@@ -46,12 +49,12 @@ public class SwingHandler {
     private List<String> choices = new ArrayList<>();
     private List<String> filteredChoices = new ArrayList<>();
 
-    private final Supplier<InputReader<String,?>> stringInputReaderSupplier;
-    private final Supplier<InputReader<Integer,?>> intInputReaderSupplier;
-    private final Supplier<InputReader<Long,?>> longInputReaderSupplier;
-    private final Supplier<InputReader<Double,?>> doubleInputReaderSupplier;
+    private final Supplier<StringInputReader> stringInputReaderSupplier;
+    private final Supplier<IntInputReader> intInputReaderSupplier;
+    private final Supplier<LongInputReader> longInputReaderSupplier;
+    private final Supplier<DoubleInputReader> doubleInputReaderSupplier;
     
-    private final List<Task<?,?>> tasks = new ArrayList<>();
+    private final List<Task<?,?,?>> tasks = new ArrayList<>();
 
     public SwingHandler(TextIO textIO, Object dataObject) {
         this.textIO = textIO;
@@ -65,23 +68,33 @@ public class SwingHandler {
 
         this.backKeyStroke = terminal.getProperties().getString("custom.back.key", "ctrl U");
 
+        terminal.getDocument().addDocumentListener(new DocumentListener() {			
+			@Override public void removeUpdate(DocumentEvent e) {choiceIndex = -1;}
+			@Override public void insertUpdate(DocumentEvent e) {choiceIndex = -1;}
+			@Override public void changedUpdate(DocumentEvent e) {choiceIndex = -1;}
+		});
+        
         terminal.registerHandler(KEY_STROKE_UP, t -> {
             if(choiceIndex < 0) {
                 originalInput = terminal.getPartialInput();
-                filteredChoices = choices.stream().filter(choice -> choice.startsWith(originalInput)).collect(Collectors.toList());
+                filteredChoices = choices.stream()
+                		.filter(choice -> choice.toLowerCase().startsWith(originalInput.toLowerCase()))
+                		.collect(Collectors.toList());
             }
             if(choiceIndex < filteredChoices.size() - 1) {
-                choiceIndex++;
+                int savedChoiceIndex = ++choiceIndex;
                 t.replaceInput(filteredChoices.get(choiceIndex), false);
+                choiceIndex = savedChoiceIndex;
             }
             return new ReadHandlerData(ReadInterruptionStrategy.Action.CONTINUE);
         });
 
         terminal.registerHandler(KEY_STROKE_DOWN, t -> {
             if(choiceIndex >= 0) {
-                choiceIndex--;
+                int savedChoiceIndex = --choiceIndex;
                 String text = (choiceIndex < 0) ? originalInput : filteredChoices.get(choiceIndex);
                 t.replaceInput(text, false);
+                choiceIndex = savedChoiceIndex;
             }
             return new ReadHandlerData(ReadInterruptionStrategy.Action.CONTINUE);
         });
@@ -97,14 +110,16 @@ public class SwingHandler {
         return backKeyStroke;
     }
 
-    public class Task<T,B extends Task<T,B>> implements Runnable {
+    public class Task<T,B extends Task<T,B, R>, R extends InputReader<T, ?>> implements Runnable {
         protected final String prompt;
-        protected final Supplier<InputReader<T,?>> inputReaderSupplier;
+        protected final Supplier<R> inputReaderSupplier;
         protected final Supplier<T> defaultValueSupplier;
         protected final Consumer<T> valueSetter;
         protected final List<T> choices = new ArrayList<>();
+        protected boolean constrainedInput;
+        protected Consumer<R> inputReaderConfigurator;
 
-        public Task(String prompt, Supplier<InputReader<T, ?>> inputReaderSupplier, Supplier<T> defaultValueSupplier, Consumer<T> valueSetter) {
+        public Task(String prompt, Supplier<R> inputReaderSupplier, Supplier<T> defaultValueSupplier, Consumer<T> valueSetter) {
             this.prompt = prompt;
             this.inputReaderSupplier = inputReaderSupplier;
             this.defaultValueSupplier = defaultValueSupplier;
@@ -114,15 +129,33 @@ public class SwingHandler {
         @Override
         public void run() {
             setChoices(choices.stream().map(Object::toString).collect(Collectors.toList()));
-            valueSetter.accept(inputReaderSupplier.get()
-                    .withDefaultValue(defaultValueSupplier.get())
-                    .read(prompt));
+            R inputReader = inputReaderSupplier.get();
+            inputReader.withDefaultValue(defaultValueSupplier.get());
+            if(inputReaderConfigurator != null) {
+            	inputReaderConfigurator.accept(inputReader);
+            }
+            if(constrainedInput) {
+            	inputReader.withValueChecker((val,name) -> choices.contains(val) ? null 
+            			: Arrays.asList("'" + val + "' is not in the choice list."));
+
+            }
+            valueSetter.accept(inputReader.read(prompt));
         }
 
+        @SuppressWarnings("unchecked")
+		public B withInputReaderConfigurator(Consumer<R> configurator) {
+            this.inputReaderConfigurator = configurator;
+            return (B)this;
+        }
+        
         @SuppressWarnings("unchecked")
 		public B addChoices(List<T> choices) {
             this.choices.addAll(choices);
             return (B)this;
+        }
+        
+        public void constrainInputToChoices() {
+        	this.constrainedInput = true;
         }
     }
 
@@ -140,7 +173,7 @@ public class SwingHandler {
     	return value -> setFieldValue(fieldName, value);
     }
     
-    public class StringTask extends Task<String, StringTask> {
+    public class StringTask extends Task<String, StringTask, StringInputReader> {
         public StringTask(String fieldName, String prompt) {
             super(prompt,
                     stringInputReaderSupplier,
@@ -161,7 +194,7 @@ public class SwingHandler {
     }
 
 
-    public class IntTask extends Task<Integer, IntTask> {
+    public class IntTask extends Task<Integer, IntTask, IntInputReader> {
         public IntTask(String fieldName, String prompt) {
             super(prompt,
                     intInputReaderSupplier,
@@ -181,7 +214,7 @@ public class SwingHandler {
     }
 
 
-    public class LongTask extends Task<Long, LongTask> {
+    public class LongTask extends Task<Long, LongTask, LongInputReader> {
         public LongTask(String fieldName, String prompt) {
             super(prompt,
                     longInputReaderSupplier,
@@ -201,7 +234,7 @@ public class SwingHandler {
     }
 
 
-    public class DoubleTask extends Task<Double, DoubleTask> {
+    public class DoubleTask extends Task<Double, DoubleTask, DoubleInputReader> {
         public DoubleTask(String fieldName, String prompt) {
             super(prompt,
                     doubleInputReaderSupplier,

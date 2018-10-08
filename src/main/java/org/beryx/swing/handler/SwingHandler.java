@@ -21,6 +21,7 @@ import org.beryx.textio.swing.SwingTextTerminal;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -129,17 +130,21 @@ public class SwingHandler {
         @Override
         public void run() {
             setChoices(choices.stream().map(Object::toString).collect(Collectors.toList()));
-            R inputReader = inputReaderSupplier.get();
-            inputReader.withDefaultValue(defaultValueSupplier.get());
-            if(inputReaderConfigurator != null) {
-                inputReaderConfigurator.accept(inputReader);
-            }
-            if(constrainedInput) {
-                inputReader.withValueChecker((val,name) -> choices.contains(val) ? null
-                        : Arrays.asList("'" + val + "' is not in the choice list."));
+            try {
+                R inputReader = inputReaderSupplier.get();
+                inputReader.withDefaultValue(defaultValueSupplier.get());
+                if(inputReaderConfigurator != null) {
+                    inputReaderConfigurator.accept(inputReader);
+                }
+                if(constrainedInput) {
+                    inputReader.withValueChecker((val,name) -> choices.contains(val) ? null
+                            : Arrays.asList("'" + val + "' is not in the choice list."));
 
+                }
+                valueSetter.accept(inputReader.read(prompt));
+            } finally {
+                setChoices(Collections.emptyList());
             }
-            valueSetter.accept(inputReader.read(prompt));
         }
 
         @SuppressWarnings("unchecked")

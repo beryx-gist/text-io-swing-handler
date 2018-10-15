@@ -16,7 +16,6 @@
 package org.beryx.swing.handler;
 
 import org.beryx.textio.TextIO;
-import org.beryx.textio.swing.SwingTextTerminal;
 
 public class Demo {
     private static class Product {
@@ -36,7 +35,7 @@ public class Demo {
 
 
     public static void main(String[] args) {
-        SwingTextTerminal terminal = new SwingTextTerminal();
+        MarsTerminal terminal = new MarsTerminal();
         terminal.init();
         TextIO textIO = new TextIO(terminal);
 
